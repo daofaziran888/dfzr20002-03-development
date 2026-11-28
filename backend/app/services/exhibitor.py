@@ -1,9 +1,14 @@
-"""参展商管理领域服务：合同金额校验、展品类别与展位匹配校验。"""
+"""参展商管理领域服务：企业登记、合同金额与展位匹配校验，以及换位交接联动。
+
+换位交接（进场回执、待交物料接收人、原编号交出记录查询）由 app.services.swap 承载，
+本服务只在校验和快照里消费它的结论。
+"""
 from __future__ import annotations
 
 from typing import Any
 
 from app.services.base import BaseModuleService
+from app.services import swap
 from app.store import store
 
 
@@ -16,7 +21,7 @@ class ExhibitorService(BaseModuleService):
     STATUS_ORDER = ["草稿", "待确认", "已确认", "已撤回"]
     ACTION_RULES = {"确认参展": "已确认", "提交确认": "待确认", "撤回记录": "已撤回"}
     NEGATIVE_ACTIONS = []
-    RELATED_MODULES = ["booth"]
+    RELATED_MODULES = ["booth", "material", "handover"]
 
     def validate_entry(self, values: dict[str, Any]) -> list[str]:
         errors: list[str] = []
@@ -61,4 +66,10 @@ class ExhibitorService(BaseModuleService):
         base["booth_linked"] = sum(
             1 for r in rows if str(r.get("备注说明", "")).startswith("BOOT-")
         )
+        # 换位交接：待处理交接单与全场回执审计结论
+        handovers = swap._handover_rows()
+        open_handovers = [h for h in handovers if str(h.get("交接状态", "")) != "已交接"]
+        base["swap_handovers"] = len(handovers)
+        base["open_swap_handovers"] = len(open_handovers)
+        base["receipt_audit_ok"] = swap.duplicate_receipt_audit()["ok"]
         return base

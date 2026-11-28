@@ -10,6 +10,9 @@ from typing import Any
 
 from app.store import store
 
+# 跨模块快照的递归栈：booth↔electrical 等模块互为关联，防止无限递归。
+_SNAPSHOT_STACK: set[str] = set()
+
 
 class BaseModuleService:
     MODULE = ""
@@ -129,12 +132,20 @@ class BaseModuleService:
             "by_status": by_status,
             "abnormal": sum(1 for row in rows if row.get("abnormal")),
         }
-        # 合并关联模块快照
-        for related in self.RELATED_MODULES:
-            from app.services import service_for
-            svc = service_for(related)
-            if svc:
-                result[f"related_{related}"] = svc.domain_snapshot()
+        # 合并关联模块快照；同一个模块在一条递归链上只展开一次，避免互相关联成环。
+        if self.MODULE in _SNAPSHOT_STACK:
+            result["related_suppressed"] = True
+            return result
+
+        _SNAPSHOT_STACK.add(self.MODULE)
+        try:
+            for related in self.RELATED_MODULES:
+                from app.services import service_for
+                svc = service_for(related)
+                if svc:
+                    result[f"related_{related}"] = svc.domain_snapshot()
+        finally:
+            _SNAPSHOT_STACK.discard(self.MODULE)
         return result
 
     def related_rows(self, module: str) -> list[dict[str, Any]]:

@@ -71,6 +71,9 @@ class EventLog:
 
 
 class MemoryStore:
+    # 参展商换位交接是参展商管理下的子能力，随附数据表不单独计为业务模块。
+    INTERNAL_TABLES = {"swap_handover", "pending_material", "entry_receipt"}
+
     def __init__(self) -> None:
         self._tables: dict[str, list[dict[str, Any]]] = {
             name: [dict(row) for row in rows] for name, rows in SEED_ROWS.items()
@@ -113,7 +116,7 @@ class MemoryStore:
                 self._booth_handover_index.setdefault(booth_no, []).append(row)
 
     def module_names(self) -> list[str]:
-        return sorted(self._tables)
+        return sorted(name for name in self._tables if name not in self.INTERNAL_TABLES)
 
     def rows(self, module: str) -> list[dict[str, Any]]:
         if module not in self._tables:
